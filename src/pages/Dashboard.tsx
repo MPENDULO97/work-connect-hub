@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
+import { authService } from "@/lib/auth";
+import { projectsAPI, proposalsAPI } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Briefcase, LogOut, User, Plus, Loader2, DollarSign, FileText, TrendingUp } from "lucide-react";
+import { Briefcase, LogOut, Plus, Loader2, FileText, TrendingUp } from "lucide-react";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -23,62 +24,49 @@ const Dashboard = () => {
 
   const checkUser = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const currentUser = await authService.getSession();
       
-      if (!session) {
+      if (!currentUser) {
         navigate("/auth/login");
         return;
       }
 
-      setUser(session.user);
+      setUser(currentUser);
+      setProfile({ full_name: currentUser.fullName });
+      setUserRoles(currentUser.roles || []);
 
-      // Fetch profile
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .single();
-
-      setProfile(profileData);
-
-      // Fetch user roles
-      const { data: rolesData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", session.user.id);
-
-      const roles = rolesData?.map((r) => r.role) || [];
-      setUserRoles(roles);
+      const token = authService.getToken();
 
       // Fetch projects if client
-      if (roles.includes("client")) {
-        const { data: projectsData } = await supabase
-          .from("projects")
-          .select("*")
-          .eq("client_id", session.user.id)
-          .order("created_at", { ascending: false });
-        setProjects(projectsData || []);
+      if (currentUser.roles.includes("client")) {
+        try {
+          const projectsData = await projectsAPI.list({});
+          setProjects(projectsData || []);
+        } catch (error) {
+          console.error("Error fetching projects:", error);
+        }
       }
 
       // Fetch proposals if freelancer
-      if (roles.includes("freelancer")) {
-        const { data: proposalsData } = await supabase
-          .from("proposals")
-          .select("*, projects(*)")
-          .eq("freelancer_id", session.user.id)
-          .order("created_at", { ascending: false });
-        setProposals(proposalsData || []);
+      if (currentUser.roles.includes("freelancer")) {
+        try {
+          const proposalsData = await proposalsAPI.list({ freelancerId: currentUser.id });
+          setProposals(proposalsData || []);
+        } catch (error) {
+          console.error("Error fetching proposals:", error);
+        }
       }
     } catch (error) {
       console.error("Error loading dashboard:", error);
       toast.error("Failed to load dashboard");
+      navigate("/auth/login");
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await authService.logout();
     navigate("/");
   };
 
@@ -104,6 +92,11 @@ const Dashboard = () => {
               <span className="text-2xl font-display font-bold">Work Connect</span>
             </Link>
             <div className="flex items-center space-x-4">
+              <Link to="/jobs">
+                <Button variant="ghost">
+                  Jobs
+                </Button>
+              </Link>
               {isClient && (
                 <Link to="/projects/new">
                   <Button className="bg-gradient-to-r from-primary to-primary-light">
@@ -195,7 +188,7 @@ const Dashboard = () => {
                 </Card>
               ) : (
                 projects.map((project) => (
-                  <Card key={project.id} className="hover:border-primary/50 transition-colors">
+                  <Card key={project._id} className="hover:border-primary/50 transition-colors">
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div>
@@ -209,9 +202,9 @@ const Dashboard = () => {
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>Budget: R {project.budget_min} - R {project.budget_max}</span>
+                        <span>Budget: R {project.budgetMin} - R {project.budgetMax}</span>
                         <span>•</span>
-                        <span>{project.project_type === "fixed" ? "Fixed Price" : "Hourly"}</span>
+                        <span>{project.projectType === "fixed" ? "Fixed Price" : "Hourly"}</span>
                       </div>
                     </CardContent>
                   </Card>
@@ -234,12 +227,12 @@ const Dashboard = () => {
                 </Card>
               ) : (
                 proposals.map((proposal) => (
-                  <Card key={proposal.id} className="hover:border-primary/50 transition-colors">
+                  <Card key={proposal._id} className="hover:border-primary/50 transition-colors">
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div>
-                          <CardTitle>{proposal.projects?.title}</CardTitle>
-                          <CardDescription className="mt-2">{proposal.cover_letter}</CardDescription>
+                          <CardTitle>{proposal.projectId?.title || 'Project'}</CardTitle>
+                          <CardDescription className="mt-2">{proposal.coverLetter}</CardDescription>
                         </div>
                         <Badge variant={proposal.status === "accepted" ? "default" : "secondary"}>
                           {proposal.status}
@@ -248,11 +241,11 @@ const Dashboard = () => {
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center gap-4 text-sm">
-                        <span className="font-semibold text-primary">Your bid: R {proposal.bid_amount}</span>
-                        {proposal.estimated_duration && (
+                        <span className="font-semibold text-primary">Your bid: R {proposal.bidAmount}</span>
+                        {proposal.estimatedDuration && (
                           <>
                             <span>•</span>
-                            <span className="text-muted-foreground">{proposal.estimated_duration}</span>
+                            <span className="text-muted-foreground">{proposal.estimatedDuration}</span>
                           </>
                         )}
                       </div>

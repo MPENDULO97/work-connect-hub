@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
+import { authService } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,12 +21,15 @@ const Auth = () => {
   const [isClient, setIsClient] = useState(searchParams.get("role") === "client");
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate("/dashboard");
-      }
-    });
+    checkSession();
   }, [navigate]);
+
+  const checkSession = async () => {
+    const user = await authService.getSession();
+    if (user) {
+      navigate("/dashboard");
+    }
+  };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,37 +52,13 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
-      });
+      const roles = [];
+      if (isFreelancer) roles.push("freelancer");
+      if (isClient) roles.push("client");
 
-      if (error) throw error;
-
-      if (data.user) {
-        const rolesToAdd = [];
-        if (isFreelancer) rolesToAdd.push("freelancer");
-        if (isClient) rolesToAdd.push("client");
-
-        for (const role of rolesToAdd) {
-          const { error: roleError } = await supabase
-            .from("user_roles")
-            .insert({ user_id: data.user.id, role });
-          
-          if (roleError) {
-            console.error("Error adding role:", roleError);
-          }
-        }
-
-        toast.success("Account created successfully!");
-        navigate("/dashboard");
-      }
+      await authService.signup(email, password, fullName, roles);
+      toast.success("Account created successfully!");
+      navigate("/dashboard");
     } catch (error: any) {
       toast.error(error.message || "Failed to create account");
     } finally {
@@ -98,13 +77,7 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
+      await authService.login(email, password);
       toast.success("Welcome back!");
       navigate("/dashboard");
     } catch (error: any) {

@@ -1,32 +1,22 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/lib/supabase";
-import { Briefcase, Users, Shield, TrendingUp, Search, Sparkles } from "lucide-react";
+import { authService } from "@/lib/auth";
+import { Briefcase, Users, Shield, TrendingUp, Sparkles } from "lucide-react";
 
 const Index = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        // Redirect authenticated users to their dashboard
+    const checkAuth = async () => {
+      const user = await authService.getSession();
+      if (user) {
         navigate("/dashboard");
       }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        navigate("/dashboard");
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    };
+    checkAuth();
   }, [navigate]);
 
   return (
