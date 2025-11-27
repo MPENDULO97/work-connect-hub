@@ -6,8 +6,8 @@ const transactionSchema = new mongoose.Schema({
   to: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // worker
   amount: { type: Number, required: true }, // in cents
   feeAmount: { type: Number, default: 0 }, // platform fee in cents
-  stripePaymentIntentId: String,
-  stripeChargeId: String,
+  payfastPaymentId: String,
+  payfastTransactionId: String,
   status: { 
     type: String, 
     enum: ['pending', 'authorized', 'captured', 'refunded', 'failed'],

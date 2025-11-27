@@ -5,15 +5,15 @@ import auth from '../middleware/auth.js';
 const router = express.Router();
 
 // Payment routes
-router.post('/create-intent', auth, paymentsController.createPaymentIntent);
-router.post('/capture', auth, paymentsController.capturePayment);
+router.post('/create-payment', auth, paymentsController.createPayment);
+router.post('/confirm', auth, paymentsController.confirmPayment);
 router.post('/pay-fee', auth, paymentsController.payFee);
 router.post('/generate-code', auth, paymentsController.generateConfirmationCode);
 
-// Stripe Connect
-router.post('/connect-account', auth, paymentsController.createConnectAccount);
+// Worker payout setup
+router.post('/setup-payout', auth, paymentsController.setupWorkerPayout);
 
-// Webhook (no auth - Stripe signature verification)
-router.post('/webhook', express.raw({ type: 'application/json' }), paymentsController.handleWebhook);
+// PayFast ITN (Instant Transaction Notification) - no auth, verified by signature
+router.post('/payfast-notify', paymentsController.handlePayFastNotify);
 
 export default router;

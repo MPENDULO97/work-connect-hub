@@ -1,8 +1,9 @@
-import stripe from '../config/stripe.js';
+import payfastConfig, { generateSignature, verifySignature, getPayFastUrl } from '../config/payfast.js';
 import Job from '../models/Job.js';
 import User from '../models/User.js';
 import Transaction from '../models/Transaction.js';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 // Calculate platform fee (10% after free trial)
 const calculateFee = (amount, user) => {
@@ -16,8 +17,8 @@ const calculateFee = (amount, user) => {
   return Math.round(amount * 0.10); // 10% fee
 };
 
-// Create Payment Intent for job
-export const createPaymentIntent = async (req, res) => {
+// Create PayFast payment for job
+export const createPayment = async (req, res) => {
   try {
     const { jobId, paymentMethod } = req.body;
     
@@ -75,68 +76,70 @@ export const createPaymentIntent = async (req, res) => {
       });
     }
     
-    // Handle card payment with Stripe
-    const amountInCents = Math.round(job.price * 100);
-    const feeAmount = calculateFee(amountInCents, poster);
+    // Handle card payment with PayFast
+    const amount = job.price.toFixed(2);
+    const feeAmount = calculateFee(job.price * 100, poster);
     
-    // Create or get Stripe customer
-    let customerId = poster.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: poster.email,
-        metadata: { userId: poster._id.toString() }
-      });
-      customerId = customer.id;
-      poster.stripeCustomerId = customerId;
-      await poster.save();
-    }
+    // Generate unique payment ID
+    const paymentId = `JOB_${job._id}_${Date.now()}`;
     
-    // Create PaymentIntent with manual capture
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountInCents,
-      currency: job.currency.toLowerCase(),
-      customer: customerId,
-      capture_method: 'manual', // Authorize now, capture later
-      metadata: {
-        jobId: job._id.toString(),
-        posterId: poster._id.toString(),
-        workerId: job.worker._id.toString(),
-        feeAmount: feeAmount.toString()
-      }
-    });
+    // Create PayFast payment data
+    const paymentData = {
+      merchant_id: payfastConfig.merchantId,
+      merchant_key: payfastConfig.merchantKey,
+      return_url: `${process.env.CLIENT_ORIGIN}/payment/success`,
+      cancel_url: `${process.env.CLIENT_ORIGIN}/payment/cancel`,
+      notify_url: `${process.env.VITE_API_BASE_URL}/api/payments/payfast-notify`,
+      name_first: poster.fullName.split(' ')[0] || 'User',
+      name_last: poster.fullName.split(' ').slice(1).join(' ') || 'User',
+      email_address: poster.email,
+      m_payment_id: paymentId,
+      amount: amount,
+      item_name: `Job: ${job.title}`,
+      item_description: job.description.substring(0, 100),
+      custom_str1: job._id.toString(),
+      custom_str2: poster._id.toString(),
+      custom_str3: job.worker._id.toString(),
+      custom_int1: feeAmount
+    };
+    
+    // Generate signature
+    const signature = generateSignature(paymentData, payfastConfig.passphrase);
+    paymentData.signature = signature;
     
     // Create transaction record
     const transaction = new Transaction({
       job: job._id,
       from: poster._id,
       to: job.worker._id,
-      amount: amountInCents,
+      amount: job.price * 100,
       feeAmount,
-      stripePaymentIntentId: paymentIntent.id,
+      payfastPaymentId: paymentId,
       status: 'pending',
       paymentMethod: 'card'
     });
     await transaction.save();
     
     // Update job
-    job.paymentIntentId = paymentIntent.id;
+    job.paymentIntentId = paymentId;
     job.paymentMethod = 'card';
     await job.save();
     
     res.json({
-      clientSecret: paymentIntent.client_secret,
-      paymentIntentId: paymentIntent.id,
-      amount: amountInCents,
+      paymentUrl: getPayFastUrl(),
+      paymentData,
+      paymentId,
+      amount: job.price * 100,
       feeAmount
     });
   } catch (error) {
-    console.error('Create payment intent error:', error);
+    console.error('Create payment error:', error);
     res.status(500).json({ error: error.message || 'Payment error' });
   }
 };
 
-// Capture payment after job completion
-export const capturePayment = async (req, res) => {
+// Confirm payment after job completion
+export const confirmPayment = async (req, res) => {
   try {
     const { jobId, confirmationCode } = req.body;
     
@@ -179,18 +182,16 @@ export const capturePayment = async (req, res) => {
       });
     }
     
-    // Capture Stripe payment
+    // For PayFast, payment is already completed via ITN
+    // Just mark job as completed
     if (!job.paymentIntentId) {
-      return res.status(400).json({ error: 'No payment intent found' });
+      return res.status(400).json({ error: 'No payment found' });
     }
     
-    const paymentIntent = await stripe.paymentIntents.capture(job.paymentIntentId);
-    
     // Update transaction
-    const transaction = await Transaction.findOne({ stripePaymentIntentId: job.paymentIntentId });
-    if (transaction) {
+    const transaction = await Transaction.findOne({ payfastPaymentId: job.paymentIntentId });
+    if (transaction && transaction.status === 'authorized') {
       transaction.status = 'captured';
-      transaction.stripeChargeId = paymentIntent.charges.data[0]?.id;
       await transaction.save();
     }
     
@@ -202,16 +203,15 @@ export const capturePayment = async (req, res) => {
     
     res.json({ 
       success: true, 
-      captured: paymentIntent.amount_captured,
-      message: 'Payment captured successfully'
+      message: 'Payment confirmed and job completed'
     });
   } catch (error) {
-    console.error('Capture payment error:', error);
-    res.status(500).json({ error: error.message || 'Capture failed' });
+    console.error('Confirm payment error:', error);
+    res.status(500).json({ error: error.message || 'Confirmation failed' });
   }
 };
 
-// Pay outstanding fees
+// Pay outstanding fees with PayFast
 export const payFee = async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
@@ -220,49 +220,37 @@ export const payFee = async (req, res) => {
       return res.status(400).json({ error: 'No outstanding fees' });
     }
     
-    const { paymentMethodId } = req.body;
+    const amount = (user.feeDue / 100).toFixed(2);
+    const paymentId = `FEE_${user._id}_${Date.now()}`;
     
-    // Create or get Stripe customer
-    let customerId = user.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        payment_method: paymentMethodId,
-        invoice_settings: { default_payment_method: paymentMethodId },
-        metadata: { userId: user._id.toString() }
-      });
-      customerId = customer.id;
-      user.stripeCustomerId = customerId;
-    } else {
-      await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
-    }
+    // Create PayFast payment data for fee
+    const paymentData = {
+      merchant_id: payfastConfig.merchantId,
+      merchant_key: payfastConfig.merchantKey,
+      return_url: `${process.env.CLIENT_ORIGIN}/payment/fee-success`,
+      cancel_url: `${process.env.CLIENT_ORIGIN}/payment/fee-cancel`,
+      notify_url: `${process.env.VITE_API_BASE_URL}/api/payments/payfast-notify`,
+      name_first: user.fullName.split(' ')[0] || 'User',
+      name_last: user.fullName.split(' ').slice(1).join(' ') || 'User',
+      email_address: user.email,
+      m_payment_id: paymentId,
+      amount: amount,
+      item_name: 'Platform Fee Payment',
+      item_description: 'Outstanding platform fees',
+      custom_str1: user._id.toString(),
+      custom_str2: 'platform_fee'
+    };
     
-    // Create payment intent for fee
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: user.feeDue,
-      currency: 'zar',
-      customer: customerId,
-      payment_method: paymentMethodId,
-      confirm: true,
-      metadata: {
-        userId: user._id.toString(),
-        type: 'platform_fee'
-      }
+    // Generate signature
+    const signature = generateSignature(paymentData, payfastConfig.passphrase);
+    paymentData.signature = signature;
+    
+    res.json({
+      paymentUrl: getPayFastUrl(),
+      paymentData,
+      paymentId,
+      amount: user.feeDue
     });
-    
-    if (paymentIntent.status === 'succeeded') {
-      user.feeDue = 0;
-      user.accountLocked = false;
-      await user.save();
-      
-      res.json({ 
-        success: true, 
-        message: 'Fee paid successfully',
-        amount: paymentIntent.amount 
-      });
-    } else {
-      res.status(400).json({ error: 'Payment failed', status: paymentIntent.status });
-    }
   } catch (error) {
     console.error('Pay fee error:', error);
     res.status(500).json({ error: error.message || 'Payment failed' });
@@ -305,80 +293,104 @@ export const generateConfirmationCode = async (req, res) => {
   }
 };
 
-// Stripe webhook handler
-export const handleWebhook = async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  
+// PayFast ITN (Instant Transaction Notification) handler
+export const handlePayFastNotify = async (req, res) => {
   try {
-    const event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
+    const data = req.body;
     
-    switch (event.type) {
-      case 'payment_intent.succeeded':
-        const paymentIntent = event.data.object;
-        console.log('PaymentIntent succeeded:', paymentIntent.id);
-        break;
-        
-      case 'payment_intent.payment_failed':
-        const failedIntent = event.data.object;
-        console.log('PaymentIntent failed:', failedIntent.id);
-        
-        // Update transaction status
-        await Transaction.updateOne(
-          { stripePaymentIntentId: failedIntent.id },
-          { status: 'failed' }
-        );
-        break;
-        
-      default:
-        console.log(`Unhandled event type: ${event.type}`);
+    console.log('PayFast ITN received:', data);
+    
+    // Verify signature
+    const isValid = verifySignature(data, data.signature, payfastConfig.passphrase);
+    
+    if (!isValid) {
+      console.error('Invalid PayFast signature');
+      return res.status(400).send('Invalid signature');
     }
     
-    res.json({ received: true });
+    // Verify payment status
+    if (data.payment_status === 'COMPLETE') {
+      const paymentId = data.m_payment_id;
+      
+      // Check if it's a fee payment
+      if (paymentId.startsWith('FEE_')) {
+        const userId = data.custom_str1;
+        const user = await User.findById(userId);
+        
+        if (user) {
+          user.feeDue = 0;
+          user.accountLocked = false;
+          await user.save();
+          console.log(`Fee paid for user ${userId}`);
+        }
+      } 
+      // Regular job payment
+      else if (paymentId.startsWith('JOB_')) {
+        const jobId = data.custom_str1;
+        const feeAmount = parseInt(data.custom_int1) || 0;
+        
+        const job = await Job.findById(jobId);
+        if (job) {
+          job.paid = true;
+          await job.save();
+        }
+        
+        // Update transaction
+        const transaction = await Transaction.findOne({ payfastPaymentId: paymentId });
+        if (transaction) {
+          transaction.status = 'authorized';
+          transaction.payfastTransactionId = data.pf_payment_id;
+          await transaction.save();
+        }
+        
+        console.log(`Payment completed for job ${jobId}`);
+      }
+    } else if (data.payment_status === 'FAILED' || data.payment_status === 'CANCELLED') {
+      const paymentId = data.m_payment_id;
+      
+      await Transaction.updateOne(
+        { payfastPaymentId: paymentId },
+        { status: 'failed' }
+      );
+      
+      console.log(`Payment ${data.payment_status.toLowerCase()} for ${paymentId}`);
+    }
+    
+    res.status(200).send('OK');
   } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(400).send(`Webhook Error: ${error.message}`);
+    console.error('PayFast ITN error:', error);
+    res.status(500).send('Error processing notification');
   }
 };
 
-// Connect Stripe account for workers (to receive payouts)
-export const createConnectAccount = async (req, res) => {
+// Setup worker payout details (bank account for PayFast)
+export const setupWorkerPayout = async (req, res) => {
   try {
+    const { bankName, accountNumber, accountType, branchCode } = req.body;
+    
     const user = await User.findById(req.user.userId);
     
-    if (user.stripeAccountId) {
-      return res.status(400).json({ error: 'Stripe account already connected' });
+    if (!user.roles.includes('freelancer')) {
+      return res.status(403).json({ error: 'Only workers can setup payout details' });
     }
     
-    const account = await stripe.accounts.create({
-      type: 'express',
-      country: 'ZA',
-      email: user.email,
-      capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true },
-      },
-      metadata: {
-        userId: user._id.toString()
-      }
-    });
+    // Store bank details (encrypted in production!)
+    user.payoutDetails = {
+      bankName,
+      accountNumber,
+      accountType,
+      branchCode,
+      verified: false
+    };
     
-    user.stripeAccountId = account.id;
     await user.save();
     
-    const accountLink = await stripe.accountLinks.create({
-      account: account.id,
-      refresh_url: `${process.env.CLIENT_ORIGIN}/worker/onboarding/refresh`,
-      return_url: `${process.env.CLIENT_ORIGIN}/worker/onboarding/complete`,
-      type: 'account_onboarding',
+    res.json({ 
+      success: true, 
+      message: 'Payout details saved. Verification pending.' 
     });
-    
-    res.json({ url: accountLink.url });
   } catch (error) {
-    console.error('Create connect account error:', error);
+    console.error('Setup payout error:', error);
     res.status(500).json({ error: error.message });
   }
 };
