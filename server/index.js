@@ -7,14 +7,20 @@ import authRoutes from './routes/auth.js';
 import jobsRoutes from './routes/jobs.js';
 import projectsRoutes from './routes/projects.js';
 import proposalsRoutes from './routes/proposals.js';
+import paymentsRoutes from './routes/payments.js';
+import weatherRoutes from './routes/weather.js';
+import directionsRoutes from './routes/directions.js';
 
 dotenv.config();
 
 const app = express();
 
+// Webhook route (must be before express.json())
+app.use('/api/payments/webhook', paymentsRoutes);
+
 // Middleware
 app.use(cors({
-  origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  origin: process.env.CLIENT_ORIGIN || 'http://localhost:8080',
   credentials: true
 }));
 app.use(express.json());
@@ -25,6 +31,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/projects', projectsRoutes);
 app.use('/api/proposals', proposalsRoutes);
+app.use('/api/payments', paymentsRoutes);
+app.use('/api/weather', weatherRoutes);
+app.use('/api/directions', directionsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

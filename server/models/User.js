@@ -13,6 +13,11 @@ const userSchema = new mongoose.Schema({
     skills: [String],
     portfolioUrl: String
   },
+  stripeAccountId: String, // Stripe Connect account for workers
+  stripeCustomerId: String, // Stripe customer for posters
+  feeDue: { type: Number, default: 0 }, // Outstanding fees in cents
+  accountLocked: { type: Boolean, default: false },
+  freeTrialEndsAt: Date, // First month free
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
