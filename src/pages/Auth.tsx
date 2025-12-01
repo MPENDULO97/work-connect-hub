@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,35 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Briefcase, Loader2 } from "lucide-react";
+
+const signupSchema = z.object({
+  fullName: z
+    .string()
+    .trim()
+    .nonempty({ message: "Full name is required" })
+    .max(100, { message: "Full name must be less than 100 characters" }),
+  email: z
+    .string()
+    .trim()
+    .email({ message: "Invalid email address" })
+    .max(255, { message: "Email must be less than 255 characters" }),
+  password: z
+    .string()
+    .min(6, { message: "Password must be at least 6 characters" })
+    .max(100, { message: "Password must be less than 100 characters" }),
+});
+
+const loginSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email({ message: "Invalid email address" })
+    .max(255, { message: "Email must be less than 255 characters" }),
+  password: z
+    .string()
+    .min(6, { message: "Password must be at least 6 characters" })
+    .max(100, { message: "Password must be less than 100 characters" }),
+});
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -33,9 +63,11 @@ const Auth = () => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!email || !password || !fullName) {
-      toast.error("Please fill in all fields");
+
+    const parsed = signupSchema.safeParse({ fullName, email, password });
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0];
+      toast.error(firstIssue?.message || "Please check your details");
       return;
     }
 
@@ -44,46 +76,56 @@ const Auth = () => {
       return;
     }
 
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
-
-    setIsLoading(true);
-
     try {
       const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
+        email: parsed.data.email,
+        password: parsed.data.password,
         options: {
           emailRedirectTo: `${window.location.origin}/dashboard`,
           data: {
-            full_name: fullName,
-          }
-        }
+            full_name: parsed.data.fullName,
+          },
+        },
       });
 
-      if (error) throw error;
+      if (error) {
+        const msg = error.message?.toLowerCase?.() || "";
+        if ((error as any).code === "user_already_exists" || msg.includes("user already registered")) {
+          // User already exists – try logging them in instead
+          const { error: loginError } = await supabase.auth.signInWithPassword({
+            email: parsed.data.email,
+            password: parsed.data.password,
+          });
+
+          if (loginError) throw loginError;
+
+          toast.success("Welcome back!");
+          navigate("/dashboard");
+          return;
+        }
+
+        throw error;
+      }
 
       if (data.user) {
         // Create profile
         const { error: profileError } = await supabase
-          .from('profiles')
+          .from("profiles")
           .insert({
             user_id: data.user.id,
-            full_name: fullName,
+            full_name: parsed.data.fullName,
           });
 
         if (profileError) throw profileError;
 
         // Add roles
-        const roleInserts = [];
-        if (isFreelancer) roleInserts.push({ user_id: data.user.id, role: 'freelancer' });
-        if (isClient) roleInserts.push({ user_id: data.user.id, role: 'client' });
+        const roleInserts: { user_id: string; role: "freelancer" | "client" }[] = [];
+        if (isFreelancer) roleInserts.push({ user_id: data.user.id, role: "freelancer" });
+        if (isClient) roleInserts.push({ user_id: data.user.id, role: "client" });
 
         if (roleInserts.length > 0) {
           const { error: rolesError } = await supabase
-            .from('user_roles')
+            .from("user_roles")
             .insert(roleInserts);
 
           if (rolesError) throw rolesError;
@@ -91,6 +133,8 @@ const Auth = () => {
 
         toast.success("Account created successfully!");
         navigate("/dashboard");
+      } else {
+        toast.success("Check your email to confirm your account.");
       }
     } catch (error: any) {
       toast.error(error.message || "Failed to create account");
@@ -102,8 +146,10 @@ const Auth = () => {
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!email || !password) {
-      toast.error("Please fill in all fields");
+    const parsed = loginSchema.safeParse({ email, password });
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0];
+      toast.error(firstIssue?.message || "Please check your login details");
       return;
     }
 
@@ -111,8 +157,8 @@ const Auth = () => {
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: parsed.data.email,
+        password: parsed.data.password,
       });
 
       if (error) throw error;
