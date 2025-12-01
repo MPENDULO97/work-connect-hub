@@ -8,11 +8,10 @@ const LoadingSpinner = () => (
   </div>
 );
 
-// Lazy load components - match your actual file names and locations
-const Home = lazy(() => import('./pages/Index'));  // Uses Index.tsx instead of Home.tsx
+// Lazy load components
+const Home = lazy(() => import('./pages/Index'));
 const Map = lazy(() => import('./pages/Map'));
-const Jobs = lazy(() => import('./pages/Jobs'));
-const Auth = lazy(() => import('./pages/Auth'));    // Combined login/signup?
+const Auth = lazy(() => import('./pages/Auth'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 
 function App() {
@@ -23,10 +22,8 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/map" element={<Map />} />
-            <Route path="/jobs" element={<Jobs />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            {/* Use existing NotFound component */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

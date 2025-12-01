@@ -107,11 +107,6 @@ const Dashboard = () => {
               <span className="text-2xl font-display font-bold">Work Connect</span>
             </Link>
             <div className="flex items-center space-x-4">
-              <Link to="/jobs">
-                <Button variant="ghost">
-                  Jobs
-                </Button>
-              </Link>
               {isClient && (
                 <Link to="/projects/new">
                   <Button className="bg-gradient-to-r from-primary to-primary-light">
