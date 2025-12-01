@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { authService } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,8 +25,8 @@ const Auth = () => {
   }, [navigate]);
 
   const checkSession = async () => {
-    const user = await authService.getSession();
-    if (user) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
       navigate("/dashboard");
     }
   };
@@ -52,13 +52,46 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      const roles = [];
-      if (isFreelancer) roles.push("freelancer");
-      if (isClient) roles.push("client");
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+          data: {
+            full_name: fullName,
+          }
+        }
+      });
 
-      await authService.signup(email, password, fullName, roles);
-      toast.success("Account created successfully!");
-      navigate("/dashboard");
+      if (error) throw error;
+
+      if (data.user) {
+        // Create profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: data.user.id,
+            full_name: fullName,
+          });
+
+        if (profileError) throw profileError;
+
+        // Add roles
+        const roleInserts = [];
+        if (isFreelancer) roleInserts.push({ user_id: data.user.id, role: 'freelancer' });
+        if (isClient) roleInserts.push({ user_id: data.user.id, role: 'client' });
+
+        if (roleInserts.length > 0) {
+          const { error: rolesError } = await supabase
+            .from('user_roles')
+            .insert(roleInserts);
+
+          if (rolesError) throw rolesError;
+        }
+
+        toast.success("Account created successfully!");
+        navigate("/dashboard");
+      }
     } catch (error: any) {
       toast.error(error.message || "Failed to create account");
     } finally {
@@ -77,7 +110,13 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      await authService.login(email, password);
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
       toast.success("Welcome back!");
       navigate("/dashboard");
     } catch (error: any) {

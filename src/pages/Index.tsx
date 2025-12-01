@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { authService } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import { Briefcase, Users, Shield, TrendingUp, Sparkles } from "lucide-react";
 
 const Index = () => {
@@ -11,8 +11,8 @@ const Index = () => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const user = await authService.getSession();
-      if (user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
         navigate("/dashboard");
       }
     };
@@ -30,10 +30,10 @@ const Index = () => {
               <span className="text-2xl font-display font-bold">Work Connect</span>
             </div>
             <div className="flex items-center space-x-4">
-              <Link to="/auth/login">
+              <Link to="/auth">
                 <Button variant="ghost">Login</Button>
               </Link>
-              <Link to="/auth/signup">
+              <Link to="/auth">
                 <Button className="bg-gradient-to-r from-primary to-primary-light hover:opacity-90 shadow-primary">
                   Get Started
                 </Button>
@@ -60,12 +60,12 @@ const Index = () => {
               All transactions in ZAR, built for local professionals.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center animate-slide-up">
-              <Link to="/auth/signup?role=freelancer">
+              <Link to="/auth?role=freelancer">
                 <Button size="lg" className="bg-gradient-to-r from-primary to-primary-light hover:opacity-90 shadow-primary text-lg px-8">
                   Find Work
                 </Button>
               </Link>
-              <Link to="/auth/signup?role=client">
+              <Link to="/auth?role=client">
                 <Button size="lg" variant="outline" className="border-2 text-lg px-8">
                   Hire Talent
                 </Button>
@@ -191,7 +191,7 @@ const Index = () => {
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
             Join thousands of South African professionals already using Work Connect
           </p>
-          <Link to="/auth/signup">
+          <Link to="/auth">
             <Button size="lg" className="bg-gradient-to-r from-primary to-primary-light hover:opacity-90 shadow-primary text-lg px-12">
               Create Free Account
             </Button>
