@@ -1,22 +1,29 @@
 import React, { useEffect, useRef } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
+
+declare global {
+  interface Window {
+    google: any;
+  }
+}
 
 const MapComponent: React.FC = () => {
   const mapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const initMap = async () => {
-      // You'll need a Google Maps API key
-      const loader = new Loader({
-        apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
-        version: 'weekly',
-      });
+      const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+      
+      if (!apiKey || !mapRef.current) return;
 
-      try {
-        const { Map } = await loader.importLibrary('maps');
-        
-        if (mapRef.current) {
-          new Map(mapRef.current, {
+      // Load Google Maps script
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
+      script.async = true;
+      script.defer = true;
+
+      script.onload = () => {
+        if (mapRef.current && window.google) {
+          new window.google.maps.Map(mapRef.current, {
             center: { lat: -26.2041, lng: 28.0473 }, // Johannesburg coordinates
             zoom: 12,
             styles: [
@@ -33,9 +40,13 @@ const MapComponent: React.FC = () => {
             ],
           });
         }
-      } catch (error) {
-        console.error('Error loading Google Maps:', error);
-      }
+      };
+
+      document.head.appendChild(script);
+
+      return () => {
+        document.head.removeChild(script);
+      };
     };
 
     initMap();
