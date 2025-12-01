@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { authAPI, profileAPI, rolesAPI, projectsAPI, proposalsAPI } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +23,7 @@ const Dashboard = () => {
 
   const checkUser = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { session } = await authAPI.getSession();
       
       if (!session) {
         navigate("/auth");
@@ -33,42 +33,23 @@ const Dashboard = () => {
       setUser(session.user);
 
       // Fetch profile
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .single();
-
+      const profileData = await profileAPI.getProfile(session.user.id);
       setProfile(profileData);
 
       // Fetch roles
-      const { data: rolesData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', session.user.id);
-
-      const roles = rolesData?.map(r => r.role) || [];
+      const rolesData = await rolesAPI.getUserRoles(session.user.id);
+      const roles = rolesData?.map((r: any) => r.role) || [];
       setUserRoles(roles);
 
       // Fetch projects if client
       if (roles.includes("client")) {
-        const { data: projectsData } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('client_id', session.user.id)
-          .order('created_at', { ascending: false });
-
+        const projectsData = await projectsAPI.getProjects(session.user.id);
         setProjects(projectsData || []);
       }
 
       // Fetch proposals if freelancer
       if (roles.includes("freelancer")) {
-        const { data: proposalsData } = await supabase
-          .from('proposals')
-          .select('*, projects(*)')
-          .eq('freelancer_id', session.user.id)
-          .order('created_at', { ascending: false });
-
+        const proposalsData = await proposalsAPI.getProposals(session.user.id);
         setProposals(proposalsData || []);
       }
     } catch (error) {
@@ -81,7 +62,7 @@ const Dashboard = () => {
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    authAPI.signOut();
     navigate("/");
   };
 
@@ -122,6 +103,11 @@ const Dashboard = () => {
                   </Button>
                 </Link>
               )}
+              <Link to="/map">
+                <Button variant="outline">
+                  Map View
+                </Button>
+              </Link>
               <Button variant="ghost" size="icon" onClick={handleSignOut}>
                 <LogOut className="h-5 w-5" />
               </Button>

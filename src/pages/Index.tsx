@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
+import { authAPI } from "@/lib/api";
 import { Briefcase, Users, Shield, TrendingUp, Sparkles } from "lucide-react";
 
 const Index = () => {
@@ -11,7 +11,7 @@ const Index = () => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { session } = await authAPI.getSession();
       if (session) {
         navigate("/dashboard");
       }

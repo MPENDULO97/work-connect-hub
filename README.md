@@ -1,6 +1,6 @@
 # Work Connect - Freelance Marketplace
 
-A modern freelance marketplace platform connecting clients with skilled freelancers in South Africa. Built with React, TypeScript, and Supabase.
+A modern freelance marketplace platform connecting clients with skilled freelancers in South Africa. Built with React, TypeScript, Node.js, Express, and MongoDB.
 
 ## Features
 
@@ -19,9 +19,10 @@ A modern freelance marketplace platform connecting clients with skilled freelanc
 
 ### 🚀 Tech Stack
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui
-- **Backend**: Supabase (PostgreSQL, Authentication, Realtime, Edge Functions)
-- **Auth**: Supabase Auth with email/password
+- **Backend**: Node.js, Express, MongoDB (Mongoose)
+- **Auth**: JWT tokens with bcrypt password hashing
 - **State**: React Query (TanStack Query)
+- **Currency**: South African Rand (ZAR)
 
 ## Quick Start
 
@@ -32,15 +33,30 @@ cd work-connect-hub
 npm install
 ```
 
-### 2. Start Development
+### 2. Configure Environment
+Create a `.env` file with:
+```env
+# Backend
+PORT=5000
+MONGO_URI=your_mongodb_connection_string
+JWT_SECRET=your_secret_key
+CLIENT_ORIGIN=http://localhost:8080
+
+# Frontend
+VITE_API_BASE_URL=http://localhost:5000
+```
+
+### 3. Start Development
 ```bash
 npm run dev
 ```
 
-This starts the frontend at http://localhost:5173
+This starts:
+- Frontend at http://localhost:8080
+- Backend at http://localhost:5000
 
-### 3. Create Account
-1. Open http://localhost:5173
+### 4. Create Account
+1. Open http://localhost:8080
 2. Click "Get Started" or "Sign Up"
 3. Fill in your details and select your role (Freelancer, Client, or both)
 4. Start using the platform!
@@ -49,7 +65,7 @@ This starts the frontend at http://localhost:5173
 
 ```
 work-connect-hub/
-├── src/
+├── src/                  # Frontend React app
 │   ├── components/       # Reusable UI components
 │   │   ├── ui/          # shadcn/ui components
 │   │   └── map/         # Map components
@@ -59,61 +75,83 @@ work-connect-hub/
 │   │   ├── Dashboard.tsx # User dashboard
 │   │   └── Map.tsx      # Map view
 │   ├── lib/             # Utilities
-│   │   ├── format.ts    # Formatting helpers (ZAR currency, dates)
-│   │   ├── utils.ts     # General utilities
-│   │   └── supabase.ts  # Supabase client
-│   ├── integrations/    # Third-party integrations
-│   │   └── supabase/    # Supabase types & client
+│   │   ├── api.ts       # API client
+│   │   └── utils.ts     # General utilities
 │   └── main.tsx         # App entry point
-├── supabase/            # Supabase configuration
-│   ├── config.toml      # Supabase project config
-│   └── migrations/      # Database migrations
+├── server/              # Backend Node.js app
+│   ├── index.js         # Server entry point
+│   ├── config/          # Configuration
+│   │   └── db.js        # MongoDB connection
+│   ├── models/          # Mongoose models
+│   │   ├── User.js
+│   │   ├── Project.js
+│   │   └── Proposal.js
+│   ├── routes/          # API routes
+│   │   ├── auth.js
+│   │   ├── projects.js
+│   │   └── proposals.js
+│   └── middleware/      # Express middleware
+│       └── auth.js      # JWT authentication
 └── package.json
 ```
 
-## Database Schema
+See `PROJECT_STRUCTURE.md` for detailed documentation.
 
-### Tables
-- **profiles**: User profile information (name, bio, skills, hourly rate)
-- **user_roles**: User role assignments (freelancer, client, admin)
+## Database Schema (MongoDB)
+
+### Collections
+- **users**: User accounts with authentication (email, password, fullName, roles[])
 - **projects**: Freelance projects with budgets and requirements
 - **proposals**: Freelancer proposals for projects
-- **milestones**: Project milestones for fixed-price projects
-- **time_entries**: Time tracking for hourly projects
-- **messages**: Real-time chat between clients and freelancers
-- **transactions**: Payment and escrow transactions
-- **reviews**: Ratings and reviews after project completion
+- **milestones**: Project milestones for fixed-price projects (coming soon)
+- **time_entries**: Time tracking for hourly projects (coming soon)
+- **messages**: Real-time chat between clients and freelancers (coming soon)
+- **transactions**: Payment and escrow transactions (coming soon)
+- **reviews**: Ratings and reviews after project completion (coming soon)
 
 ## Security Features
 
-- Row Level Security (RLS) enabled on all tables
-- Secure authentication with Supabase Auth
-- Role-based access control
+- JWT-based authentication with secure token storage
+- Bcrypt password hashing
+- Role-based access control (freelancer, client)
 - Input validation with Zod schema validation
-- Protected API routes
+- Protected API routes with authentication middleware
+- CORS configuration for secure cross-origin requests
 
 ## Environment Variables
 
-The `.env` file is automatically managed by Lovable Cloud and includes:
-- `VITE_SUPABASE_URL` - Supabase project URL
-- `VITE_SUPABASE_PUBLISHABLE_KEY` - Supabase anon key
-- `VITE_SUPABASE_PROJECT_ID` - Supabase project ID
+Required variables in `.env`:
+
+**Backend:**
+- `PORT` - Server port (default: 5000)
+- `MONGO_URI` - MongoDB connection string
+- `JWT_SECRET` - Secret key for JWT tokens
+- `CLIENT_ORIGIN` - Frontend URL for CORS
+
+**Frontend:**
+- `VITE_API_BASE_URL` - Backend API URL
+- `VITE_GOOGLE_MAPS_API_KEY` - Google Maps API key
+- `VITE_MAPBOX_TOKEN` - Mapbox token
+- `VITE_OPENWEATHER_KEY` - OpenWeather API key
 
 ## Scripts
 
 ```bash
-npm run dev        # Start development server
-npm run build      # Build for production
+npm run dev        # Start both frontend and backend
+npm run client     # Start frontend only (Vite)
+npm run server     # Start backend only (Express)
+npm run build      # Build frontend for production
 npm run preview    # Preview production build
 ```
 
 ## Key Features Implementation
 
 ### Authentication
-- Email/password authentication via Supabase Auth
-- Auto-confirm email enabled for development
-- Session persistence with localStorage
+- Email/password authentication with JWT tokens
+- Secure password hashing with bcrypt
+- Token storage in localStorage
 - Protected routes requiring authentication
+- 7-day token expiration
 
 ### Projects & Proposals
 - Clients create projects (fixed-price or hourly)
@@ -127,8 +165,8 @@ npm run preview    # Preview production build
 - Hourly payment approvals by clients
 - All transactions in South African Rands (ZAR)
 
-### Communication
-- Real-time chat using Supabase Realtime
+### Communication (Coming Soon)
+- Real-time chat using Socket.IO
 - File sharing in messages
 - Notifications for new messages and proposals
 
@@ -149,7 +187,9 @@ MIT License - feel free to use for personal or commercial projects
 - [x] User authentication and profiles
 - [x] Project posting and browsing
 - [x] Proposal system
-- [ ] Real-time messaging
+- [x] MongoDB backend migration
+- [x] JWT authentication
+- [ ] Real-time messaging (Socket.IO)
 - [ ] Payment integration (PayFast for South Africa)
 - [ ] Email notifications
 - [ ] File uploads for project attachments
@@ -157,7 +197,16 @@ MIT License - feel free to use for personal or commercial projects
 - [ ] Portfolio showcase for freelancers
 - [ ] Contract management
 - [ ] Dispute resolution system
+- [ ] Milestone tracking
+- [ ] Time tracking for hourly projects
+
+## Documentation
+
+- `PROJECT_STRUCTURE.md` - Detailed project structure
+- `MIGRATION_NOTES.md` - Supabase to MongoDB migration details
+- `TEST_API.md` - API testing guide
+- `server/README.md` - Backend documentation
 
 ---
 
-Built for South Africa 🇿🇦 with React, TypeScript, and Supabase
+Built for South Africa 🇿🇦 with React, TypeScript, Node.js, Express, and MongoDB

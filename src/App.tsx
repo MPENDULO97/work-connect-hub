@@ -12,6 +12,7 @@ const LoadingSpinner = () => (
 const Home = lazy(() => import('./pages/Index'));
 const Map = lazy(() => import('./pages/Map'));
 const Auth = lazy(() => import('./pages/Auth'));
+const AuthTest = lazy(() => import('./pages/AuthTest'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/map" element={<Map />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/auth-test" element={<AuthTest />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { authAPI } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,7 +55,7 @@ const Auth = () => {
   }, [navigate]);
 
   const checkSession = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { session } = await authAPI.getSession();
     if (session) {
       navigate("/dashboard");
     }
@@ -63,6 +63,7 @@ const Auth = () => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("Signup button clicked!", { fullName, email, password, isFreelancer, isClient });
 
     const parsed = signupSchema.safeParse({ fullName, email, password });
     if (!parsed.success) {
@@ -76,68 +77,40 @@ const Auth = () => {
       return;
     }
 
+    setIsLoading(true);
+
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: parsed.data.email,
-        password: parsed.data.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-          data: {
-            full_name: parsed.data.fullName,
-          },
-        },
-      });
+      const roles = [];
+      if (isFreelancer) roles.push("freelancer");
+      if (isClient) roles.push("client");
 
-      if (error) {
-        const msg = error.message?.toLowerCase?.() || "";
-        if ((error as any).code === "user_already_exists" || msg.includes("user already registered")) {
-          // User already exists – try logging them in instead
-          const { error: loginError } = await supabase.auth.signInWithPassword({
-            email: parsed.data.email,
-            password: parsed.data.password,
-          });
+      const data = await authAPI.signUp(
+        parsed.data.email,
+        parsed.data.password,
+        {
+          fullName: parsed.data.fullName,
+          roles,
+        }
+      );
 
-          if (loginError) throw loginError;
-
+      toast.success("Account created successfully!");
+      navigate("/dashboard");
+    } catch (error: any) {
+      const msg = error.message?.toLowerCase?.() || "";
+      
+      // If user already exists, try logging them in
+      if (msg.includes("already exists") || msg.includes("already registered")) {
+        try {
+          await authAPI.signIn(parsed.data.email, parsed.data.password);
           toast.success("Welcome back!");
           navigate("/dashboard");
           return;
+        } catch (loginError: any) {
+          toast.error(loginError.message || "Failed to sign in");
         }
-
-        throw error;
-      }
-
-      if (data.user) {
-        // Create profile
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .insert({
-            user_id: data.user.id,
-            full_name: parsed.data.fullName,
-          });
-
-        if (profileError) throw profileError;
-
-        // Add roles
-        const roleInserts: { user_id: string; role: "freelancer" | "client" }[] = [];
-        if (isFreelancer) roleInserts.push({ user_id: data.user.id, role: "freelancer" });
-        if (isClient) roleInserts.push({ user_id: data.user.id, role: "client" });
-
-        if (roleInserts.length > 0) {
-          const { error: rolesError } = await supabase
-            .from("user_roles")
-            .insert(roleInserts);
-
-          if (rolesError) throw rolesError;
-        }
-
-        toast.success("Account created successfully!");
-        navigate("/dashboard");
       } else {
-        toast.success("Check your email to confirm your account.");
+        toast.error(error.message || "Failed to create account");
       }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to create account");
     } finally {
       setIsLoading(false);
     }
@@ -145,6 +118,7 @@ const Auth = () => {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("Login button clicked!", { email, password });
 
     const parsed = loginSchema.safeParse({ email, password });
     if (!parsed.success) {
@@ -156,13 +130,7 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: parsed.data.email,
-        password: parsed.data.password,
-      });
-
-      if (error) throw error;
-
+      await authAPI.signIn(parsed.data.email, parsed.data.password);
       toast.success("Welcome back!");
       navigate("/dashboard");
     } catch (error: any) {
@@ -219,6 +187,17 @@ const Auth = () => {
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Sign In
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="w-full mt-2" 
+                    onClick={() => {
+                      console.log("Test button clicked!");
+                      alert("Button is clickable!");
+                    }}
+                  >
+                    Test Button (Click Me)
                   </Button>
                 </form>
               </TabsContent>
@@ -287,6 +266,17 @@ const Auth = () => {
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Create Account
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="w-full mt-2" 
+                    onClick={() => {
+                      console.log("Test button clicked!");
+                      alert("Button is clickable!");
+                    }}
+                  >
+                    Test Button (Click Me)
                   </Button>
                 </form>
               </TabsContent>
