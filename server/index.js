@@ -16,6 +16,8 @@ const app = express();
 connectDB();
 
 // Middleware
+console.log("CLIENT_ORIGIN from env:", process.env.CLIENT_ORIGIN);
+console.log("Using CORS origin:", process.env.CLIENT_ORIGIN || "http://localhost:8080");
 app.use(
   cors({
     origin: process.env.CLIENT_ORIGIN || "http://localhost:8080",

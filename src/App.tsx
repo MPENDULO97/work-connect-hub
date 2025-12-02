@@ -11,9 +11,9 @@ const LoadingSpinner = () => (
 // Lazy load components
 const Home = lazy(() => import('./pages/Index'));
 const Map = lazy(() => import('./pages/Map'));
-const Auth = lazy(() => import('./pages/Auth'));
+const Auth = lazy(() => import('./pages/AuthSimple')); // Using simple version
 const AuthTest = lazy(() => import('./pages/AuthTest'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Dashboard = lazy(() => import('./pages/DashboardSimple')); // Using simple version
 
 function App() {
   return (
